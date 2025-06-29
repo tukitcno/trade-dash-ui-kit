@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import Header from "@/components/Header";
 import AccountSummary from "@/components/AccountSummary";
@@ -7,6 +6,9 @@ import ChartSection from "@/components/ChartSection";
 import TradingPanel from "@/components/TradingPanel";
 import AssetsList from "@/components/AssetsList";
 import RecentTrades from "@/components/RecentTrades";
+import { connectDeriv, sendDerivMessage, closeDerivConnection } from "@/lib/derivApi";
+
+const DERIV_TOKEN = "***********wWFq"; // Place your real token here
 
 const UserDashboard = () => {
   const [balance, setBalance] = useState(10000);
@@ -85,6 +87,37 @@ const UserDashboard = () => {
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Deriv API connection
+  const wsRef = useRef<WebSocket | null>(null);
+
+  const handleDerivConnect = useCallback(() => {
+    if (wsRef.current) return;
+    wsRef.current = connectDeriv(
+      (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        if (data.msg_type === "authorize") {
+          toast.success("Deriv API authorized!");
+        } else if (data.error) {
+          toast.error(`Deriv error: ${data.error.message}`);
+        }
+      },
+      () => {
+        // On open, send authorize
+        sendDerivMessage({ authorize: DERIV_TOKEN });
+      },
+      (err) => toast.error("WebSocket error: " + err.message),
+      () => {
+        wsRef.current = null;
+        toast("Deriv WebSocket closed");
+      }
+    );
+  }, []);
+
+  useEffect(() => {
+    handleDerivConnect();
+    return () => closeDerivConnection();
+  }, [handleDerivConnect]);
 
   return (
     <div className="min-h-screen bg-slate-950">
